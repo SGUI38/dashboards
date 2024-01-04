@@ -102,11 +102,6 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MARIADB_AUTO_UPGRADE=1
     command: ["--max-allowed-packet=128M", "--innodb-log-file-size=64M"]
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-u", "root", "--password=owncloud"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     volumes:
       - ${PERSISTENT_FILE_LOCATION}/mysql:/var/lib/mysql
     networks:
