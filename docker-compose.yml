@@ -1,0 +1,132 @@
+services:
+
+# Start postgres
+  postgres:
+    image: postgres:15.4
+    container_name: postgres15.4_container
+    hostname: postgres
+    restart: always
+    ports:
+      - "55432:5432"
+    volumes:
+      - ${PERSISTENT_FILE_LOCATION}/postgresql:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_DB=${POSTGRES_DATABASE}
+    networks:
+      - local_container_network
+
+
+# Start the pgadmin service. The postgres database is accessible using "postgres" as server name
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin4_container
+    hostname: pgadmin
+    restart: always
+    ports:
+      - "50080:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    volumes:
+      - ${PERSISTENT_FILE_LOCATION}/pgadmin-data:/var/lib/pgadmin
+    networks:
+      - local_container_network
+    depends_on:
+      - postgres
+
+# Start the metabase service
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase
+    hostname: metabase
+    restart: always
+    volumes:
+    - ${PERSISTENT_FILE_LOCATION}/metabase-data:/dev/random:ro
+    ports:
+      - "53000:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${POSTGRES_DATABASE}
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${POSTGRES_USER}
+      MB_DB_PASS: ${POSTGRES_PASSWORD}
+      MB_DB_HOST: postgres
+    networks:
+      - local_container_network
+    depends_on:
+      - postgres
+
+# Start owncloud service
+  owncloud:
+    image: owncloud/server:${OWNCLOUD_VERSION}
+    container_name: owncloud_server
+    restart: always
+    ports:
+      - ${HTTP_PORT}:8080
+    networks:
+      - local_container_network
+    depends_on:
+      - mariadb
+      - redis
+    environment:
+      - OWNCLOUD_DOMAIN=${OWNCLOUD_DOMAIN}
+      - OWNCLOUD_TRUSTED_DOMAINS=${OWNCLOUD_TRUSTED_DOMAINS}
+      - OWNCLOUD_DB_TYPE=mysql
+      - OWNCLOUD_DB_NAME=${MYSQL_DATABASE}
+      - OWNCLOUD_DB_USERNAME=${MYSQL_USER}
+      - OWNCLOUD_DB_PASSWORD=${MYSQL_PASSWORD}
+      - OWNCLOUD_DB_HOST=mariadb
+      - OWNCLOUD_ADMIN_USERNAME=${ADMIN_USERNAME}
+      - OWNCLOUD_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - OWNCLOUD_MYSQL_UTF8MB4=true
+      - OWNCLOUD_REDIS_ENABLED=true
+      - OWNCLOUD_REDIS_HOST=redis
+    healthcheck:
+      test: ["CMD", "/usr/bin/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ${PERSISTENT_FILE_LOCATION}/owncloud:/mnt/data
+
+  mariadb:
+    image: mariadb:10.11 # minimum required ownCloud version is 10.9
+    container_name: owncloud_mariadb
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MARIADB_AUTO_UPGRADE=1
+    command: ["--max-allowed-packet=128M", "--innodb-log-file-size=64M"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-u", "root", "--password=owncloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ${PERSISTENT_FILE_LOCATION}/mysql:/var/lib/mysql
+    networks:
+      - local_container_network
+
+  redis:
+    image: redis:6
+    container_name: owncloud_redis
+    restart: always
+    command: ["--databases", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ${PERSISTENT_FILE_LOCATION}/redis:/data
+    networks:
+      - local_container_network
+
+networks:
+  local_container_network:
+    driver: bridge
